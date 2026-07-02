@@ -13,6 +13,15 @@ function asNodes(content: unknown): TiptapNode[] {
   return Array.isArray(content) ? (content as TiptapNode[]) : [];
 }
 
+// Footnote definitions collected in body-encounter order during the current
+// conversion (reset per tiptapToPandocMarkdown call). Pandoc's native
+// footnote syntax (`[^N]` / `[^N]: content`) needs no fenced-div filter,
+// unlike callouts — the definitions just get appended after the body.
+let footnoteDefs: [label: string, content: string][] | null = null;
+// data-id -> rendered content, built once per conversion from the doc's
+// trailing `footnotes` node before the body is rendered.
+let footnoteContentById: Map<string, string> | null = null;
+
 function attrLatex(node: TiptapNode): string {
   const attrs = node.attrs ?? {};
   for (const key of ["latex", "formula", "equation", "value"]) {
@@ -82,6 +91,18 @@ function inlineToMarkdown(content: unknown): string {
         return latex.trim() ? `$${latex}$` : "";
       }
       if (type === "hardBreak") return "  \n";
+      if (type === "footnoteReference") {
+        const id = node.attrs?.["data-id"];
+        const label =
+          typeof node.attrs?.referenceNumber === "string" ||
+          typeof node.attrs?.referenceNumber === "number"
+            ? String(node.attrs.referenceNumber)
+            : "";
+        const content = typeof id === "string" ? footnoteContentById?.get(id) : undefined;
+        if (!label || content === undefined) return "";
+        footnoteDefs?.push([label, content]);
+        return `[^${label}]`;
+      }
       return "";
     })
     .join("");
@@ -219,6 +240,11 @@ function renderBlock(node: TiptapNode): string {
       return renderTable(node);
     case "hardBreak":
       return "";
+    case "footnotes":
+      // The trailing footnotes list is never rendered as a visible block —
+      // its content is emitted as `[^N]: ...` definitions appended at the
+      // end (see tiptapToPandocMarkdown), Pandoc's native footnote syntax.
+      return "";
     default:
       return inlineToMarkdown(node.content);
   }
@@ -232,7 +258,32 @@ function renderBlocks(nodes: TiptapNode[]): string {
     .trim();
 }
 
+// Builds data-id -> rendered-content for every `footnote` node under the
+// doc's trailing `footnotes` list (tiptap-footnotes always nests them one
+// level: footnotes > footnote > paragraph+).
+function buildFootnoteContentMap(nodes: TiptapNode[]): Map<string, string> {
+  const map = new Map<string, string>();
+  const footnotesNode = nodes.find((node) => node.type === "footnotes");
+  for (const footnote of asNodes(footnotesNode?.content)) {
+    const id = footnote.attrs?.["data-id"];
+    if (typeof id === "string") {
+      map.set(id, renderBlocks(asNodes(footnote.content)).replace(/\n+/g, " ").trim());
+    }
+  }
+  return map;
+}
+
 /** Convert a Tiptap `doc` node to Pandoc-flavored Markdown. */
 export function tiptapToPandocMarkdown(doc: TiptapNode): string {
-  return renderBlocks(asNodes(doc.content));
+  const nodes = asNodes(doc.content);
+  footnoteContentById = buildFootnoteContentMap(nodes);
+  footnoteDefs = [];
+
+  const body = renderBlocks(nodes);
+  const defs = footnoteDefs.map(([label, content]) => `[^${label}]: ${content}`).join("\n\n");
+
+  footnoteContentById = null;
+  footnoteDefs = null;
+
+  return defs ? `${body}\n\n${defs}` : body;
 }
