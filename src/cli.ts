@@ -12,10 +12,17 @@ import { z } from "zod";
 import { exportTiptapToDocx } from "./export-docx.js";
 import { PandocError } from "./pandoc/pandoc.js";
 
-// This file (src/cli.ts unbundled, or dist/cli.js after esbuild bundling)
-// always sits exactly one level below the repo root in both layouts, so
-// "assets" is a sibling of its parent directory either way.
-const assetsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "assets");
+// This file (src/cli.ts unbundled, or dist/cli.js after esbuild bundling to
+// CJS for the desktop app) always sits exactly one level below the repo
+// root in both layouts, so "assets" is a sibling of its parent directory
+// either way. __dirname is a real CJS global (what the bundled dist/cli.js
+// runs as); import.meta.url only resolves under tsx's ESM dev mode — esbuild
+// leaves it empty when bundling to CJS, it does not shim it.
+const hereDir =
+  typeof __dirname !== "undefined"
+    ? __dirname
+    : path.dirname(fileURLToPath(import.meta.url));
+const assetsDir = path.resolve(hereDir, "..", "assets");
 
 const tiptapNodeSchema: z.ZodType<Record<string, unknown>> = z.record(z.string(), z.unknown());
 
