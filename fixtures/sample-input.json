@@ -1,0 +1,62 @@
+{
+  "title": "測試文件",
+  "content": {
+    "type": "doc",
+    "content": [
+      { "type": "heading", "attrs": { "level": 1 }, "content": [{ "type": "text", "text": "講義從此開始" }] },
+      {
+        "type": "paragraph",
+        "content": [{ "type": "text", "text": "這是內文，測試 callout、表格、數學公式轉 docx 的效果。" }]
+      },
+      {
+        "type": "callout",
+        "attrs": { "kind": "note", "title": "小提醒" },
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              { "type": "text", "text": "這是一個 " },
+              { "type": "text", "text": "note", "marks": [{ "type": "bold" }] },
+              { "type": "text", "text": " 類型的 callout。" }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "callout",
+        "attrs": { "kind": "danger", "title": "危險" },
+        "content": [
+          { "type": "paragraph", "content": [{ "type": "text", "text": "這是一個 danger 類型的 callout。" }] }
+        ]
+      },
+      {
+        "type": "table",
+        "content": [
+          {
+            "type": "tableRow",
+            "content": [
+              { "type": "tableHeader", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "項目" }] }] },
+              { "type": "tableHeader", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "數量" }] }] }
+            ]
+          },
+          {
+            "type": "tableRow",
+            "content": [
+              { "type": "tableCell", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "蘋果" }] }] },
+              { "type": "tableCell", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "3" }] }] }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "paragraph",
+        "content": [
+          { "type": "text", "text": "行內公式 " },
+          { "type": "inlineMath", "attrs": { "latex": "E = mc^2" } },
+          { "type": "text", "text": "。" }
+        ]
+      },
+      { "type": "blockMath", "attrs": { "latex": "\\int_0^\\infty e^{-x^2} \\, dx = \\frac{\\sqrt{\\pi}}{2}" } }
+    ]
+  }
+}

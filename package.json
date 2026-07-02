@@ -1,0 +1,33 @@
+{
+  "name": "anvilnote-docx-exporter",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CLI service for converting AnvilNote Tiptap documents to Word (.docx) via Pandoc.",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/cli.ts",
+    "export": "tsx src/cli.ts",
+    "build": "tsc",
+    "build:desktop": "node scripts/bundle-desktop.mjs",
+    "start": "node dist/cli.js",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "test": "tsx --test src/**/*.test.ts",
+    "assets:build-reference": "tsx scripts/build-reference-docx.ts"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.62.0",
+    "@typescript-eslint/parser": "^8.62.0",
+    "docx": "^9.7.1",
+    "esbuild": "^0.28.1",
+    "eslint": "^10.5.0",
+    "prettier": "^3.8.4",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3"
+  }
+}
