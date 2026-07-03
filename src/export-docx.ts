@@ -15,7 +15,7 @@ export async function exportTiptapToDocx(
   input: ExportDocxInput,
   assetsDir: string,
 ): Promise<Buffer> {
-  const body = tiptapToPandocMarkdown(input.content);
+  const body = tiptapToPandocMarkdown(input.content, input.primaryLang);
   const frontmatter = `---\ntitle: "${escapeYaml(input.title || "Untitled")}"\n---\n\n`;
   return markdownToDocx(frontmatter + body, assetsDir);
 }

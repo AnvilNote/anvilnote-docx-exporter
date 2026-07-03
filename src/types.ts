@@ -21,4 +21,9 @@ export type TiptapNode = {
 export type ExportDocxInput = {
   title: string;
   content: TiptapNode;
+  // The document's own language (document.templateSettings.primaryLang),
+  // for formatting crossRef display text — see config/cross-ref-labels.ts.
+  // Optional: older callers / documents without this setting fall back to
+  // the formatter's own default.
+  primaryLang?: string;
 };

@@ -29,6 +29,7 @@ const tiptapNodeSchema: z.ZodType<Record<string, unknown>> = z.record(z.string()
 const inputSchema = z.object({
   title: z.string().default("Untitled"),
   content: tiptapNodeSchema,
+  primaryLang: z.string().optional(),
 });
 
 function parseArgs(argv: string[]) {

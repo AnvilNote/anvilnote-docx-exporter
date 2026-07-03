@@ -1,4 +1,5 @@
 import type { TiptapMark, TiptapNode } from "../types.js";
+import { formatCrossRefLabel } from "../config/cross-ref-labels.js";
 
 // Converts a Tiptap `doc` node to Pandoc-flavored Markdown: GFM tables,
 // $…$ / $$…$$ math (Pandoc's native math extension), and — the one place
@@ -21,6 +22,9 @@ let footnoteDefs: [label: string, content: string][] | null = null;
 // data-id -> rendered content, built once per conversion from the doc's
 // trailing `footnotes` node before the body is rendered.
 let footnoteContentById: Map<string, string> | null = null;
+// The document's own language (document.templateSettings.primaryLang), for
+// formatting crossRef display text — see config/cross-ref-labels.ts.
+let primaryLang: string | undefined;
 
 function attrLatex(node: TiptapNode): string {
   const attrs = node.attrs ?? {};
@@ -102,6 +106,26 @@ function inlineToMarkdown(content: unknown): string {
         if (!label || content === undefined) return "";
         footnoteDefs?.push([label, content]);
         return `[^${label}]`;
+      }
+      if (type === "crossRef") {
+        // No live re-numbering here (unlike the PDF/Typst path's real
+        // @label refs) — DOCX (via this Markdown intermediate + Pandoc)
+        // just prints whatever the editor's own resolver (anvilnote-web's
+        // cross-ref.ts) already computed and stored on the node the last
+        // time the document was edited/saved, formatted per the document's
+        // own language (see config/cross-ref-labels.ts). A dangling
+        // reference (target deleted) prints nothing, same as a footnote
+        // reference whose content went missing above.
+        const kind = node.attrs?.resolvedKind;
+        const value = node.attrs?.resolvedValue;
+        if (node.attrs?.broken || typeof kind !== "string" || typeof value !== "string") {
+          return "";
+        }
+        return formatCrossRefLabel(
+          kind as "figure" | "table" | "equation" | "heading",
+          value,
+          primaryLang,
+        );
       }
       return "";
     })
@@ -274,16 +298,18 @@ function buildFootnoteContentMap(nodes: TiptapNode[]): Map<string, string> {
 }
 
 /** Convert a Tiptap `doc` node to Pandoc-flavored Markdown. */
-export function tiptapToPandocMarkdown(doc: TiptapNode): string {
+export function tiptapToPandocMarkdown(doc: TiptapNode, docPrimaryLang?: string): string {
   const nodes = asNodes(doc.content);
   footnoteContentById = buildFootnoteContentMap(nodes);
   footnoteDefs = [];
+  primaryLang = docPrimaryLang;
 
   const body = renderBlocks(nodes);
   const defs = footnoteDefs.map(([label, content]) => `[^${label}]: ${content}`).join("\n\n");
 
   footnoteContentById = null;
   footnoteDefs = null;
+  primaryLang = undefined;
 
   return defs ? `${body}\n\n${defs}` : body;
 }
