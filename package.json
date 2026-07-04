@@ -2,6 +2,7 @@
   "name": "anvilnote-docx-exporter",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "description": "CLI service for converting AnvilNote Tiptap documents to Word (.docx) via Pandoc.",
   "type": "module",
   "scripts": {
