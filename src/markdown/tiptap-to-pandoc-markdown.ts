@@ -1,5 +1,6 @@
 import type { TiptapMark, TiptapNode } from "../types.js";
 import { formatCrossRefLabel } from "../config/cross-ref-labels.js";
+import { proofLabel } from "../config/proof-labels.js";
 
 // Converts a Tiptap `doc` node to Pandoc-flavored Markdown: GFM tables,
 // $…$ / $$…$$ math (Pandoc's native math extension), and — the one place
@@ -255,6 +256,20 @@ function renderBlock(node: TiptapNode): string {
     }
     case "callout":
       return renderCallout(node);
+    case "proof": {
+      // Unlike callout, proof has no color/kind to map to a Word style via
+      // callout.lua's fenced-div handling — a plain Pandoc blockquote (the
+      // same shape as this file's own "blockquote" case above) is enough,
+      // Pandoc maps that to Word's built-in Quote style on its own.
+      const label = `**${proofLabel(primaryLang)}**`;
+      const inner = renderBlocks(asNodes(node.content));
+      return [label, inner]
+        .filter(Boolean)
+        .join("\n\n")
+        .split("\n")
+        .map((line) => (line ? `> ${line}` : ">"))
+        .join("\n");
+    }
     case "codeBlock": {
       const lang = typeof node.attrs?.language === "string" ? node.attrs.language : "";
       const code = textContent(node.content);
