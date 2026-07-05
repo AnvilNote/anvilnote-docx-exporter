@@ -37,13 +37,17 @@ function normalizePrimaryLang(value: string | undefined): CrossRefPrimaryLang {
 // always the plain sequence number regardless, confirmed directly with the
 // user (a named equation's crossRef still shows "式 (1)", not the name).
 export function formatCrossRefLabel(
-  kind: "figure" | "table" | "equation" | "heading",
+  kind: "figure" | "figureSub" | "table" | "equation" | "heading",
   value: string,
   primaryLang: string | undefined,
 ): string {
   if (kind === "heading") return value;
 
   const lang = normalizePrimaryLang(primaryLang);
-  const supplement = SUPPLEMENTS[lang][kind];
+  // figureSub's value already comes pre-formatted as "1 (a)" (see
+  // anvilnote-web's cross-ref.ts numbering pass) — it shares "figure"'s
+  // own supplement and plain "{supplement} {value}" join, not equation's
+  // parenthesized one.
+  const supplement = SUPPLEMENTS[lang][kind === "figureSub" ? "figure" : kind];
   return kind === "equation" ? `${supplement} (${value})` : `${supplement} ${value}`;
 }

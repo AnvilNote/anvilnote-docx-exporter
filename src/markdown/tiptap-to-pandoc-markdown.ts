@@ -133,7 +133,7 @@ function inlineToMarkdown(content: unknown): string {
           return "";
         }
         return formatCrossRefLabel(
-          kind as "figure" | "table" | "equation" | "heading",
+          kind as "figure" | "figureSub" | "table" | "equation" | "heading",
           value,
           primaryLang,
         );
@@ -285,6 +285,15 @@ function renderBlock(node: TiptapNode): string {
       return "---";
     case "image":
       return renderImage(node);
+    case "imageRow":
+      // No side-by-side layout primitive in Pandoc Markdown either —
+      // degrades to each sub-image rendered the same as a plain standalone
+      // one, one after another (same fallback pattern as callout's own
+      // Markdown case here).
+      return asNodes(node.content)
+        .map((child) => renderImage(child))
+        .filter(Boolean)
+        .join("\n\n");
     case "table":
       return renderTable(node);
     case "hardBreak":
