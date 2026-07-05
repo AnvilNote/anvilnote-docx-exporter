@@ -14,6 +14,16 @@ function asNodes(content: unknown): TiptapNode[] {
   return Array.isArray(content) ? (content as TiptapNode[]) : [];
 }
 
+// Figure captions are a plain string attribute (an <input> in the editor,
+// not real ProseMirror content — see anvilnote-web's caption-math.ts), so
+// math support there is just a $$...$$ convention (the editor's own
+// inlineMath delimiter) rather than a real inlineMath node. Swapped to a
+// single $...$ to match this file's own inline math elsewhere — no LaTeX
+// translation needed, Pandoc's math extension takes the source as-is.
+function renderCaptionMarkdown(caption: string): string {
+  return caption.replace(/\$\$([^$\n]+?)\$\$/g, "$$$1$$");
+}
+
 // Footnote definitions collected in body-encounter order during the current
 // conversion (reset per tiptapToPandocMarkdown call). Pandoc's native
 // footnote syntax (`[^N]` / `[^N]: content`) needs no fenced-div filter,
@@ -202,7 +212,7 @@ function renderImage(node: TiptapNode): string {
   const src = typeof node.attrs?.src === "string" ? node.attrs.src : "";
   if (!src) return "";
   const caption = typeof node.attrs?.caption === "string" ? node.attrs.caption.trim() : "";
-  return `![${caption}](${src})`;
+  return `![${renderCaptionMarkdown(caption)}](${src})`;
 }
 
 // Escapes a value for use inside a fenced-div attribute's double quotes.
