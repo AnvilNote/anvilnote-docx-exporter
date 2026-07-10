@@ -1,7 +1,7 @@
 import type { TiptapMark, TiptapNode } from "../types.js";
 import { formatCrossRefLabel } from "../config/cross-ref-labels.js";
 import { proofLabel } from "../config/proof-labels.js";
-import { choiceColumns } from "./question-choices.js";
+import { choiceColumns, type ChoiceEntry } from "./question-choices.js";
 
 // Converts a Tiptap `doc` node to Pandoc-flavored Markdown: GFM tables,
 // $…$ / $$…$$ math (Pandoc's native math extension), and — the one place
@@ -261,6 +261,94 @@ function escapeXmlText(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+// v3 (rich content): a choiceItem's content is exactly one of
+// paragraph/image/blockMath — this pairs the typed ChoiceEntry (used
+// for the choiceColumns() width heuristic, plain-text only) with the
+// real inner node (used for actual rendering, marks and all).
+interface ChoiceItemEntry {
+  label: string;
+  entry: ChoiceEntry;
+  inner: TiptapNode;
+}
+
+function choiceItemEntries(choiceListNode: TiptapNode): ChoiceItemEntry[] {
+  const items = asNodes(choiceListNode.content);
+  const withoutLabels = items.map((item): { entry: ChoiceEntry; inner: TiptapNode } => {
+    const inner = asNodes(item.content)[0];
+    if (!inner) return { entry: { kind: "text", text: "" }, inner: { type: "paragraph", content: [] } };
+    if (inner.type === "image") return { entry: { kind: "image" }, inner };
+    if (inner.type === "blockMath") return { entry: { kind: "blockMath" }, inner };
+    return { entry: { kind: "text", text: textContent(inner.content) }, inner };
+  });
+  // Empty text choices are dropped before labeling, same as the old
+  // string[]-based behavior (choices.filter((c) => c.trim() !== "")) —
+  // an image/blockMath choice is never "empty" in this sense.
+  const nonEmpty = withoutLabels.filter(
+    ({ entry }) => !(entry.kind === "text" && entry.text.trim() === ""),
+  );
+  return nonEmpty.map(({ entry, inner }, i) => ({
+    label: CHOICE_LABELS[i] ?? String(i + 1),
+    entry,
+    inner,
+  }));
+}
+
+// Renders a single choice's content as plain Pandoc markdown — used for
+// pipe-table cells (multi-column layout), where every cell is just
+// inline markdown text regardless of choice type. Text choices reuse
+// the same inline-marks renderer every other paragraph in this file
+// goes through (inlineToMarkdown), so bold/italic/inline-math already
+// work for free. Image choices reuse the existing body-image renderer
+// (renderImage). blockMath choices reuse the existing latex extraction
+// (attrLatex) but with a single-$ inline delimiter (not the block $$
+// this file's body blockMath case uses) so it stays on the choice's own
+// line inside a table cell instead of breaking the cell.
+function renderChoiceContentMarkdown(entry: ChoiceEntry, inner: TiptapNode): string {
+  if (entry.kind === "image") return renderImage(inner);
+  if (entry.kind === "blockMath") {
+    const latex = attrLatex(inner);
+    return latex.trim() ? `$${latex}$` : "";
+  }
+  return inlineToMarkdown(inner.content);
+}
+
+// Converts a paragraph's content array to real OOXML runs (`<w:r>`),
+// applying `<w:rPr>` for bold/italic/underline/strike from each text
+// node's own marks — used ONLY inside the raw-OOXML 1-column choice
+// line below, where Pandoc's own markdown-to-OOXML mark handling is
+// bypassed entirely (see renderChoiceLine's own comment), so marks have
+// to be turned into real run formatting by hand here instead of via
+// `**bold**` markdown syntax.
+function renderInlineOoxmlRuns(content: TiptapNode[]): string {
+  return content
+    .map((node) => {
+      if (node.type !== "text" || typeof node.text !== "string" || !node.text) return "";
+      const marks: TiptapMark[] = Array.isArray(node.marks) ? node.marks : [];
+      const rPrParts: string[] = [];
+      for (const mark of marks) {
+        switch (mark?.type) {
+          case "bold":
+            rPrParts.push("<w:b/>");
+            break;
+          case "italic":
+            rPrParts.push("<w:i/>");
+            break;
+          case "underline":
+            rPrParts.push('<w:u w:val="single"/>');
+            break;
+          case "strike":
+            rPrParts.push("<w:strike/>");
+            break;
+          default:
+            break;
+        }
+      }
+      const rPr = rPrParts.length > 0 ? `<w:rPr>${rPrParts.join("")}</w:rPr>` : "";
+      return `<w:r>${rPr}<w:t xml:space="preserve">${escapeXmlText(node.text)}</w:t></w:r>`;
+    })
+    .join("");
+}
+
 // Each 1-column choice line renders as a raw OOXML paragraph (a Pandoc
 // ```{=openxml} fenced block, passed straight through to the docx
 // writer) with an explicit w:spacing w:before="176" (twips) — 0.8em at
@@ -282,23 +370,42 @@ function escapeXmlText(value: string): string {
 // the filter untouched — confirmed against the exact real invocation
 // (markdown+fenced_divs, --lua-filter callout.lua, --reference-doc,
 // --mathml) before relying on it.
-function renderChoiceLine(text: string): string {
-  return `\`\`\`{=openxml}\n<w:p><w:pPr><w:spacing w:before="176" w:after="0"/></w:pPr><w:r><w:t xml:space="preserve">${escapeXmlText(text)}</w:t></w:r></w:p>\n\`\`\``;
+//
+// v3 (rich content): a text choice keeps this exact raw-OOXML shape
+// (now with real <w:b/>/<w:i/>/... run formatting per mark, via
+// renderInlineOoxmlRuns, instead of the old plain-text-only <w:t>). An
+// image/blockMath choice can't be hand-built as raw OOXML from inside
+// this markdown-intermediate step — there's no access here to Pandoc's
+// own media-relationship machinery (the .docx zip's image parts /
+// relationship IDs) or its LaTeX-to-OMML math conversion from outside a
+// real Pandoc parse — so those fall back to a normal Pandoc markdown
+// paragraph (image markdown / inline math), which Pandoc itself still
+// converts to a real embedded drawing / OMML equation on the way to
+// .docx, just without this exact tuned 0.8em space-before (default Word
+// paragraph spacing applies instead for that one line).
+function renderChoiceLine(label: string, entry: ChoiceEntry, inner: TiptapNode): string {
+  if (entry.kind === "text") {
+    const labelRun = `<w:r><w:t xml:space="preserve">(${label}) </w:t></w:r>`;
+    const textRuns = renderInlineOoxmlRuns(asNodes(inner.content));
+    return `\`\`\`{=openxml}\n<w:p><w:pPr><w:spacing w:before="176" w:after="0"/></w:pPr>${labelRun}${textRuns}</w:p>\n\`\`\``;
+  }
+  return `(${label}) ${renderChoiceContentMarkdown(entry, inner)}`;
 }
 
-function renderChoices(choices: string[], forceOneColumn: boolean): string {
-  const nonEmpty = choices.filter((c) => c.trim() !== "");
-  if (nonEmpty.length === 0) return "";
-  const labeled = nonEmpty.map((c, i) => `(${CHOICE_LABELS[i] ?? i + 1}) ${c}`);
-  const columns = forceOneColumn ? 1 : choiceColumns(nonEmpty);
+function renderChoices(items: ChoiceItemEntry[], forceOneColumn: boolean): string {
+  if (items.length === 0) return "";
+  const columns = forceOneColumn ? 1 : choiceColumns(items.map((item) => item.entry));
 
   if (columns === 1) {
-    return labeled.map(renderChoiceLine).join("\n\n");
+    return items.map(({ label, entry, inner }) => renderChoiceLine(label, entry, inner)).join("\n\n");
   }
 
+  const cells = items.map(
+    ({ label, entry, inner }) => `(${label}) ${renderChoiceContentMarkdown(entry, inner)}`,
+  );
   const rows: string[][] = [];
-  for (let i = 0; i < labeled.length; i += columns) {
-    const row = labeled.slice(i, i + columns);
+  for (let i = 0; i < cells.length; i += columns) {
+    const row = cells.slice(i, i + columns);
     while (row.length < columns) row.push("");
     rows.push(row);
   }
@@ -354,10 +461,18 @@ function renderQuestionItem(node: TiptapNode): string {
 
   // single: auto column layout. multi: always 1 column — see
   // renderChoices's own comment.
-  const choices = Array.isArray(node.attrs?.choices)
-    ? (node.attrs.choices as unknown[]).filter((c): c is string => typeof c === "string")
-    : [];
-  const choicesMarkdown = renderChoices(choices, kind === "multi");
+  //
+  // v3 (rich content): choices no longer live in node.attrs.choices
+  // (a plain string[]) — they're a real "choiceList" child in this
+  // questionItem's own content stream (after the body paragraph(s)).
+  // `body` above already rendered it as "" (see the top-level
+  // "choiceList" case below, same "rendered separately, empty string in
+  // normal flow" pattern the renderer side's own choiceList case uses)
+  // since it's rendered here explicitly instead.
+  const choiceListChild = asNodes(node.content).find((child) => child.type === "choiceList");
+  const choicesMarkdown = choiceListChild
+    ? renderChoices(choiceItemEntries(choiceListChild), kind === "multi")
+    : "";
   return [heading, choicesMarkdown].filter(Boolean).join("\n\n");
 }
 
@@ -392,6 +507,14 @@ function renderBlock(node: TiptapNode): string {
       return renderQuestion(node);
     case "questionItem":
       return renderQuestionItem(node);
+    case "choiceList":
+      // Rendered explicitly by questionItem's own case (via
+      // choiceItemEntries/renderChoices) — NOT part of the normal
+      // renderBlocks() flow, same "appears separately, empty string in
+      // normal flow" pattern as the "footnotes" case below. Returning
+      // non-empty here would double-render every choice (once here,
+      // once via questionItem's explicit call).
+      return "";
     case "proof": {
       // Unlike callout, proof has no color/kind to map to a Word style via
       // callout.lua's fenced-div handling — a plain Pandoc blockquote (the
