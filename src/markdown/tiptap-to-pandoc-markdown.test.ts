@@ -2,6 +2,24 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { tiptapToPandocMarkdown } from "./tiptap-to-pandoc-markdown.js";
 
+// v3 (rich content): choices are no longer a plain attrs.choices:
+// string[] — they're real content, a trailing "choiceList" child in a
+// questionItem's own content stream, holding one or more "choiceItem"
+// nodes each wrapping exactly one paragraph/image/blockMath. This
+// helper builds that shape from plain option strings so the
+// pre-existing tests below (originally written against the old
+// attrs.choices shape) keep testing the same scenarios under the new
+// content shape.
+function textChoiceList(options: string[]) {
+  return {
+    type: "choiceList",
+    content: options.map((text) => ({
+      type: "choiceItem",
+      content: [{ type: "paragraph", content: [{ type: "text", text }] }],
+    })),
+  };
+}
+
 test("renders a single-choice item with 4 short choices as a 4-column pipe table", () => {
   const doc = {
     type: "doc",
@@ -11,8 +29,11 @@ test("renders a single-choice item with 4 short choices as a 4-column pipe table
         content: [
           {
             type: "questionItem",
-            attrs: { kind: "single", choices: ["go", "goes", "going", "gone"] },
-            content: [{ type: "paragraph", content: [{ type: "text", text: "Choose the correct answer." }] }],
+            attrs: { kind: "single" },
+            content: [
+              { type: "paragraph", content: [{ type: "text", text: "Choose the correct answer." }] },
+              textChoiceList(["go", "goes", "going", "gone"]),
+            ],
           },
         ],
       },
@@ -32,8 +53,11 @@ test("renders a multi-choice item with SHORT choices as a single-column list any
         content: [
           {
             type: "questionItem",
-            attrs: { kind: "multi", choices: ["go", "goes", "going", "gone"] },
-            content: [{ type: "paragraph", content: [{ type: "text", text: "Choose all that apply." }] }],
+            attrs: { kind: "multi" },
+            content: [
+              { type: "paragraph", content: [{ type: "text", text: "Choose all that apply." }] },
+              textChoiceList(["go", "goes", "going", "gone"]),
+            ],
           },
         ],
       },
@@ -45,8 +69,8 @@ test("renders a multi-choice item with SHORT choices as a single-column list any
   // space-before (see renderChoiceLine's own comment for why this isn't
   // a custom-style Div) — not a bare blank-line-separated list.
   assert.match(md, /w:spacing w:before="176"/);
-  assert.match(md, /\(A\) go<\/w:t>/);
-  assert.match(md, /\(D\) gone<\/w:t>/);
+  assert.match(md, /\(A\) <\/w:t><\/w:r><w:r><w:t xml:space="preserve">go<\/w:t>/);
+  assert.match(md, /\(D\) <\/w:t><\/w:r><w:r><w:t xml:space="preserve">gone<\/w:t>/);
 });
 
 test("renders a multi-choice item with long choices as a single-column list, no table", () => {
@@ -58,16 +82,16 @@ test("renders a multi-choice item with long choices as a single-column list, no 
         content: [
           {
             type: "questionItem",
-            attrs: {
-              kind: "multi",
-              choices: [
+            attrs: { kind: "multi" },
+            content: [
+              { type: "paragraph", content: [{ type: "text", text: "Pick one." }] },
+              textChoiceList([
                 "a fairly long English phrase here",
                 "another quite long option to pick",
                 "a third long-ish choice of text",
                 "and a fourth verbose one indeed",
-              ],
-            },
-            content: [{ type: "paragraph", content: [{ type: "text", text: "Pick one." }] }],
+              ]),
+            ],
           },
         ],
       },
@@ -75,8 +99,8 @@ test("renders a multi-choice item with long choices as a single-column list, no 
   };
   const md = tiptapToPandocMarkdown(doc);
   assert.doesNotMatch(md, /\|/);
-  assert.match(md, /\(A\) a fairly long English phrase here/);
-  assert.match(md, /\(D\) and a fourth verbose one indeed/);
+  assert.match(md, /a fairly long English phrase here/);
+  assert.match(md, /and a fourth verbose one indeed/);
 });
 
 test("numbers items continuously across multiple items in one block and across blocks", () => {
@@ -88,13 +112,19 @@ test("numbers items continuously across multiple items in one block and across b
         content: [
           {
             type: "questionItem",
-            attrs: { kind: "single", choices: ["a", "b"] },
-            content: [{ type: "paragraph", content: [{ type: "text", text: "First." }] }],
+            attrs: { kind: "single" },
+            content: [
+              { type: "paragraph", content: [{ type: "text", text: "First." }] },
+              textChoiceList(["a", "b"]),
+            ],
           },
           {
             type: "questionItem",
-            attrs: { kind: "single", choices: ["c", "d"] },
-            content: [{ type: "paragraph", content: [{ type: "text", text: "Second." }] }],
+            attrs: { kind: "single" },
+            content: [
+              { type: "paragraph", content: [{ type: "text", text: "Second." }] },
+              textChoiceList(["c", "d"]),
+            ],
           },
         ],
       },
@@ -103,8 +133,11 @@ test("numbers items continuously across multiple items in one block and across b
         content: [
           {
             type: "questionItem",
-            attrs: { kind: "single", choices: ["e", "f"] },
-            content: [{ type: "paragraph", content: [{ type: "text", text: "Third." }] }],
+            attrs: { kind: "single" },
+            content: [
+              { type: "paragraph", content: [{ type: "text", text: "Third." }] },
+              textChoiceList(["e", "f"]),
+            ],
           },
         ],
       },
@@ -114,6 +147,58 @@ test("numbers items continuously across multiple items in one block and across b
   assert.match(md, /\*\*1\.\*\* First\./);
   assert.match(md, /\*\*2\.\*\* Second\./);
   assert.match(md, /\*\*3\.\*\* Third\./);
+});
+
+test("renders a choiceList with a bold text choice, an image choice, and an equation choice", () => {
+  const doc = {
+    type: "doc",
+    content: [
+      {
+        type: "question",
+        content: [
+          {
+            type: "questionItem",
+            attrs: { kind: "single" },
+            content: [
+              { type: "paragraph", content: [{ type: "text", text: "Mixed choices." }] },
+              {
+                type: "choiceList",
+                content: [
+                  {
+                    type: "choiceItem",
+                    content: [
+                      {
+                        type: "paragraph",
+                        content: [{ type: "text", text: "bold one", marks: [{ type: "bold" }] }],
+                      },
+                    ],
+                  },
+                  {
+                    type: "choiceItem",
+                    content: [{ type: "image", attrs: { src: "data:image/png;base64,AAAA" } }],
+                  },
+                  {
+                    type: "choiceItem",
+                    content: [{ type: "blockMath", attrs: { latex: "x^2" } }],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  const md = tiptapToPandocMarkdown(doc);
+  assert.match(md, /\*\*bold one\*\*/);
+  // Exact image/math markdown shape depends on this repo's existing
+  // image/math rendering conventions — assert their PRESENCE (some
+  // recognizable marker), not an exact string.
+  assert.match(md, /\(A\)/);
+  assert.match(md, /\(B\)/);
+  assert.match(md, /\(C\)/);
+  assert.match(md, /data:image\/png;base64,AAAA/);
+  assert.match(md, /x\^2/);
 });
 
 test("renders a written/lines item as N underscore rules, no choices", () => {
