@@ -108,7 +108,11 @@ test("renders a written/lines item as N underscore rules, no choices", () => {
   };
   const md = tiptapToPandocMarkdown(doc);
   assert.match(md, /\*\*1\.\*\* Short answer\./);
-  const underscoreLines = md.split("\n\n").filter((block) => /^_+$/.test(block.trim()));
+  // Escaped underscores (\_), not bare ones — bare "_"*3+ alone on a line
+  // is Pandoc's thematic-break syntax and would vanish as an <hr> in the
+  // real docx (caught via manual verification against real Pandoc
+  // output, see this feature's plan doc); escaping keeps it literal text.
+  const underscoreLines = md.split("\n\n").filter((block) => /^(\\_)+$/.test(block.trim()));
   assert.equal(underscoreLines.length, 2);
 });
 

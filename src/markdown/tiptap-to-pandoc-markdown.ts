@@ -302,7 +302,15 @@ function renderQuestionItem(node: TiptapNode): string {
       return [heading, blanks].join("\n\n");
     }
     const lines = typeof node.attrs?.writtenLines === "number" ? node.attrs.writtenLines : 3;
-    const rules = Array.from({ length: lines }, () => "_".repeat(40)).join("\n\n");
+    // A paragraph of 3+ bare underscores is Pandoc's thematic-break
+    // syntax (--from markdown+fenced_divs still has the default
+    // "thematic_breaks" extension on, which this codebase legitimately
+    // relies on elsewhere for horizontalRule nodes — see this file's own
+    // `case "horizontalRule": return "---";`). Escaping each underscore
+    // (`\_`) keeps it literal text instead — confirmed against a real
+    // `pandoc -t native` run: unescaped renders as `HorizontalRule`,
+    // escaped renders as `Para [Str "____...")]`.
+    const rules = Array.from({ length: lines }, () => "\\_".repeat(40)).join("\n\n");
     return [heading, rules].join("\n\n");
   }
 
