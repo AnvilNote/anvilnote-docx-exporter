@@ -148,6 +148,16 @@ function inlineToMarkdown(content: unknown): string {
           primaryLang,
         );
       }
+      if (type === "questionBlank") {
+        // No live re-numbering here, same as crossRef just above — DOCX (via
+        // this Markdown intermediate) prints whatever anvilnote-web's own
+        // cross-ref.ts resolver already computed and stored on the node.
+        const value = node.attrs?.resolvedValue;
+        if (node.attrs?.broken || typeof value !== "string") {
+          return "";
+        }
+        return `(${value})`;
+      }
       return "";
     })
     .join("");
