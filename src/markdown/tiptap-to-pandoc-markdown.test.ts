@@ -23,6 +23,27 @@ test("renders a single-choice item with 4 short choices as a 4-column pipe table
   assert.match(md, /\(A\) go \| \(B\) goes \| \(C\) going \| \(D\) gone/);
 });
 
+test("renders a multi-choice item with SHORT choices as a single-column list anyway — multi always forces 1 column", () => {
+  const doc = {
+    type: "doc",
+    content: [
+      {
+        type: "question",
+        content: [
+          {
+            type: "questionItem",
+            attrs: { kind: "multi", choices: ["go", "goes", "going", "gone"] },
+            content: [{ type: "paragraph", content: [{ type: "text", text: "Choose all that apply." }] }],
+          },
+        ],
+      },
+    ],
+  };
+  const md = tiptapToPandocMarkdown(doc);
+  assert.doesNotMatch(md, /\|/);
+  assert.match(md, /\(A\) go\n\n\(B\) goes\n\n\(C\) going\n\n\(D\) gone/);
+});
+
 test("renders a multi-choice item with long choices as a single-column list, no table", () => {
   const doc = {
     type: "doc",

@@ -239,20 +239,26 @@ function renderCallout(node: TiptapNode): string {
   return `::: {.callout .${kind}${titleAttr}}\n${inner}\n:::`;
 }
 
-// choices() renders as a Pandoc pipe table when choiceColumns() says
-// more than 1 column — GFM tables are what Pandoc maps onto a real Word
-// table (matching the PDF/Typst side's grid() layout at that point);
-// 1 column instead renders as a plain line-per-choice list, matching
+// choices() renders as a Pandoc pipe table when the column count is
+// more than 1 — GFM tables are what Pandoc maps onto a real Word table
+// (matching the PDF/Typst side's grid() layout at that point); 1 column
+// instead renders as a plain line-per-choice list, matching
 // anvilnote-renderer's own choices() Typst function taking the same
 // branch. The last row is padded with empty cells if the option count
 // doesn't divide evenly into the column count.
+//
+// `forceOneColumn` (multi-choice items — see renderQuestionItem below)
+// skips the choiceColumns() heuristic entirely and always renders one
+// option per line, matching the Typst side's own `columns: 1` override —
+// per explicit feedback, single and multi share only the (A)/(B)/...
+// label style, not the column layout.
 const CHOICE_LABELS = ["A", "B", "C", "D", "E", "F", "G", "H"];
 
-function renderChoices(choices: string[]): string {
+function renderChoices(choices: string[], forceOneColumn: boolean): string {
   const nonEmpty = choices.filter((c) => c.trim() !== "");
   if (nonEmpty.length === 0) return "";
   const labeled = nonEmpty.map((c, i) => `(${CHOICE_LABELS[i] ?? i + 1}) ${c}`);
-  const columns = choiceColumns(nonEmpty);
+  const columns = forceOneColumn ? 1 : choiceColumns(nonEmpty);
 
   if (columns === 1) {
     return labeled.join("\n\n");
@@ -314,12 +320,12 @@ function renderQuestionItem(node: TiptapNode): string {
     return [heading, rules].join("\n\n");
   }
 
-  // single/multi — identical rendering (see renderChoices, unchanged
-  // from v1's own implementation).
+  // single: auto column layout. multi: always 1 column — see
+  // renderChoices's own comment.
   const choices = Array.isArray(node.attrs?.choices)
     ? (node.attrs.choices as unknown[]).filter((c): c is string => typeof c === "string")
     : [];
-  const choicesMarkdown = renderChoices(choices);
+  const choicesMarkdown = renderChoices(choices, kind === "multi");
   return [heading, choicesMarkdown].filter(Boolean).join("\n\n");
 }
 
