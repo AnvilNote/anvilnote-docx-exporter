@@ -1,6 +1,7 @@
 import type { TiptapMark, TiptapNode } from "../types.js";
 import { formatCrossRefLabel } from "../config/cross-ref-labels.js";
 import { proofLabel } from "../config/proof-labels.js";
+import { choiceColumns } from "./question-choices.js";
 
 // Converts a Tiptap `doc` node to Pandoc-flavored Markdown: GFM tables,
 // $…$ / $$…$$ math (Pandoc's native math extension), and — the one place
@@ -14,6 +15,15 @@ import { proofLabel } from "../config/proof-labels.js";
 function asNodes(content: unknown): TiptapNode[] {
   return Array.isArray(content) ? (content as TiptapNode[]) : [];
 }
+
+// Question numbering: same "count in document order, reset per export
+// run" convention as anvilnote-web's live-counted numbering
+// (question-node-view.tsx's useQuestionNumber) and anvilnote-renderer's
+// Typst q-num counter — all three independently derive the same numbers
+// from the same rule, no cross-repo sync needed. Reset at the top/bottom
+// of tiptapToPandocMarkdown(), same lifecycle as footnoteContentById/
+// footnoteDefs/primaryLang below.
+let questionCounter = 0;
 
 // Figure captions are a plain string attribute (an <input> in the editor,
 // not real ProseMirror content — see anvilnote-web's caption-math.ts), so
@@ -229,6 +239,51 @@ function renderCallout(node: TiptapNode): string {
   return `::: {.callout .${kind}${titleAttr}}\n${inner}\n:::`;
 }
 
+// choices() renders as a Pandoc pipe table when choiceColumns() says
+// more than 1 column — GFM tables are what Pandoc maps onto a real Word
+// table (matching the PDF/Typst side's grid() layout at that point);
+// 1 column instead renders as a plain line-per-choice list, matching
+// anvilnote-renderer's own choices() Typst function taking the same
+// branch. The last row is padded with empty cells if the option count
+// doesn't divide evenly into the column count.
+const CHOICE_LABELS = ["A", "B", "C", "D", "E", "F", "G", "H"];
+
+function renderChoices(choices: string[]): string {
+  const nonEmpty = choices.filter((c) => c.trim() !== "");
+  if (nonEmpty.length === 0) return "";
+  const labeled = nonEmpty.map((c, i) => `(${CHOICE_LABELS[i] ?? i + 1}) ${c}`);
+  const columns = choiceColumns(nonEmpty);
+
+  if (columns === 1) {
+    return labeled.join("\n\n");
+  }
+
+  const rows: string[][] = [];
+  for (let i = 0; i < labeled.length; i += columns) {
+    const row = labeled.slice(i, i + columns);
+    while (row.length < columns) row.push("");
+    rows.push(row);
+  }
+  const lines = [
+    `| ${Array.from({ length: columns }, () => "").join(" | ")} |`,
+    `| ${Array.from({ length: columns }, () => "---").join(" | ")} |`,
+    ...rows.map((row) => `| ${row.join(" | ")} |`),
+  ];
+  return lines.join("\n");
+}
+
+function renderQuestion(node: TiptapNode): string {
+  questionCounter += 1;
+  const choices = Array.isArray(node.attrs?.choices)
+    ? (node.attrs.choices as unknown[]).filter((c): c is string => typeof c === "string")
+    : [];
+  const body = renderBlocks(asNodes(node.content));
+  const choicesMarkdown = renderChoices(choices);
+  return [`**${questionCounter}.** ${body}`, choicesMarkdown]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
 function renderBlock(node: TiptapNode): string {
   const type = typeof node.type === "string" ? node.type : "paragraph";
 
@@ -256,6 +311,8 @@ function renderBlock(node: TiptapNode): string {
     }
     case "callout":
       return renderCallout(node);
+    case "question":
+      return renderQuestion(node);
     case "proof": {
       // Unlike callout, proof has no color/kind to map to a Word style via
       // callout.lua's fenced-div handling — a plain Pandoc blockquote (the
@@ -337,6 +394,7 @@ export function tiptapToPandocMarkdown(doc: TiptapNode, docPrimaryLang?: string)
   footnoteContentById = buildFootnoteContentMap(nodes);
   footnoteDefs = [];
   primaryLang = docPrimaryLang;
+  questionCounter = 0;
 
   const body = renderBlocks(nodes);
   const defs = footnoteDefs.map(([label, content]) => `[^${label}]: ${content}`).join("\n\n");
