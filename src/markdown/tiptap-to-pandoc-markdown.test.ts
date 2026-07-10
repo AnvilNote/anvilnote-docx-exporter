@@ -41,7 +41,12 @@ test("renders a multi-choice item with SHORT choices as a single-column list any
   };
   const md = tiptapToPandocMarkdown(doc);
   assert.doesNotMatch(md, /\|/);
-  assert.match(md, /\(A\) go\n\n\(B\) goes\n\n\(C\) going\n\n\(D\) gone/);
+  // Each 1-column choice line is a raw OOXML paragraph carrying explicit
+  // space-before (see renderChoiceLine's own comment for why this isn't
+  // a custom-style Div) — not a bare blank-line-separated list.
+  assert.match(md, /w:spacing w:before="176"/);
+  assert.match(md, /\(A\) go<\/w:t>/);
+  assert.match(md, /\(D\) gone<\/w:t>/);
 });
 
 test("renders a multi-choice item with long choices as a single-column list, no table", () => {
