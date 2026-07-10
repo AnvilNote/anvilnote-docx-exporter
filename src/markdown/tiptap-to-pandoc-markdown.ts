@@ -254,6 +254,38 @@ function renderCallout(node: TiptapNode): string {
 // label style, not the column layout.
 const CHOICE_LABELS = ["A", "B", "C", "D", "E", "F", "G", "H"];
 
+// A minimal XML text-content escape (element text, not attribute values —
+// only &/</> need it there). Used below since raw OOXML paragraphs bypass
+// Pandoc's own markdown-to-XML escaping entirely.
+function escapeXmlText(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// Each 1-column choice line renders as a raw OOXML paragraph (a Pandoc
+// ```{=openxml} fenced block, passed straight through to the docx
+// writer) with an explicit w:spacing w:before="176" (twips) — 0.8em at
+// the doc's own 11pt default body size (assets/reference.docx's
+// docDefaults' rPrDefault sz is 22 half-points = 11pt; 0.8 * 11pt =
+// 8.8pt = 176 twips, 1pt = 20 twips) — matching the web editor's own
+// 0.8em gap-y and the PDF/Typst side's own 0.8em row-gutter.
+//
+// NOT a Div with a `custom-style` pointing at a named paragraph style in
+// reference.docx — that was tried first and worked in isolation, but
+// broke (silently fell back to Pandoc's own generic "Compact" style,
+// losing the spacing) the moment `--lua-filter callout.lua` was in the
+// same pandoc invocation, confirmed via direct experimentation to be
+// true for ANY --lua-filter (even a no-op one defining zero functions),
+// not something specific to callout.lua's own logic. Since this
+// exporter's real CLI pipeline always loads that filter (see
+// pandoc.ts's runPandoc), custom-style was a dead end here. Raw OOXML
+// paragraphs bypass Pandoc's style-name resolution entirely and survive
+// the filter untouched — confirmed against the exact real invocation
+// (markdown+fenced_divs, --lua-filter callout.lua, --reference-doc,
+// --mathml) before relying on it.
+function renderChoiceLine(text: string): string {
+  return `\`\`\`{=openxml}\n<w:p><w:pPr><w:spacing w:before="176" w:after="0"/></w:pPr><w:r><w:t xml:space="preserve">${escapeXmlText(text)}</w:t></w:r></w:p>\n\`\`\``;
+}
+
 function renderChoices(choices: string[], forceOneColumn: boolean): string {
   const nonEmpty = choices.filter((c) => c.trim() !== "");
   if (nonEmpty.length === 0) return "";
@@ -261,7 +293,7 @@ function renderChoices(choices: string[], forceOneColumn: boolean): string {
   const columns = forceOneColumn ? 1 : choiceColumns(nonEmpty);
 
   if (columns === 1) {
-    return labeled.join("\n\n");
+    return labeled.map(renderChoiceLine).join("\n\n");
   }
 
   const rows: string[][] = [];
