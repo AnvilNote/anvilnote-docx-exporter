@@ -272,16 +272,47 @@ function renderChoices(choices: string[]): string {
   return lines.join("\n");
 }
 
+// "question" is now a pure container (v2 restructure) — see this
+// feature's design doc. It has no rendering of its own, just its
+// children (questionItem nodes) in order.
 function renderQuestion(node: TiptapNode): string {
+  return renderBlocks(asNodes(node.content));
+}
+
+function renderQuestionItem(node: TiptapNode): string {
   questionCounter += 1;
+  const kind = typeof node.attrs?.kind === "string" ? node.attrs.kind : "single";
+  const body = renderBlocks(asNodes(node.content));
+  const heading = `**${questionCounter}.** ${body}`;
+
+  if (kind === "written") {
+    const writtenMode = typeof node.attrs?.writtenMode === "string" ? node.attrs.writtenMode : "lines";
+    if (writtenMode === "blank") {
+      const percent =
+        typeof node.attrs?.writtenHeightPercent === "number" ? node.attrs.writtenHeightPercent : 20;
+      // No page-height concept exists in Pandoc markdown output — this is
+      // an APPROXIMATION, not a real percentage-of-page-height (that's
+      // only achievable in the PDF/Typst export path, which bakes a
+      // literal cm value client-side — see anvilnote-web's
+      // question-item-node-view.tsx). Each blank paragraph is a
+      // non-breaking space (`&nbsp;`), not truly empty text, so Pandoc
+      // doesn't collapse/merge consecutive blank paragraphs into one.
+      const blankParagraphCount = Math.max(1, Math.round(percent / 5));
+      const blanks = Array.from({ length: blankParagraphCount }, () => "&nbsp;").join("\n\n");
+      return [heading, blanks].join("\n\n");
+    }
+    const lines = typeof node.attrs?.writtenLines === "number" ? node.attrs.writtenLines : 3;
+    const rules = Array.from({ length: lines }, () => "_".repeat(40)).join("\n\n");
+    return [heading, rules].join("\n\n");
+  }
+
+  // single/multi — identical rendering (see renderChoices, unchanged
+  // from v1's own implementation).
   const choices = Array.isArray(node.attrs?.choices)
     ? (node.attrs.choices as unknown[]).filter((c): c is string => typeof c === "string")
     : [];
-  const body = renderBlocks(asNodes(node.content));
   const choicesMarkdown = renderChoices(choices);
-  return [`**${questionCounter}.** ${body}`, choicesMarkdown]
-    .filter(Boolean)
-    .join("\n\n");
+  return [heading, choicesMarkdown].filter(Boolean).join("\n\n");
 }
 
 function renderBlock(node: TiptapNode): string {
@@ -313,6 +344,8 @@ function renderBlock(node: TiptapNode): string {
       return renderCallout(node);
     case "question":
       return renderQuestion(node);
+    case "questionItem":
+      return renderQuestionItem(node);
     case "proof": {
       // Unlike callout, proof has no color/kind to map to a Word style via
       // callout.lua's fenced-div handling — a plain Pandoc blockquote (the
