@@ -469,8 +469,10 @@ function renderQuestionItem(node: TiptapNode): string {
     return [heading, rules].join("\n\n");
   }
 
-  // single: auto column layout. multi: always 1 column — see
-  // renderChoices's own comment.
+  // single: auto column layout. multi: 1 column by DEFAULT
+  // (multiForceOneColumn, default true), or the same auto-column
+  // heuristic if the user toggled it off — see renderChoices's own
+  // comment.
   //
   // v3 (rich content): choices no longer live in node.attrs.choices
   // (a plain string[]) — they're a real "choiceList" child in this
@@ -480,8 +482,9 @@ function renderQuestionItem(node: TiptapNode): string {
   // normal flow" pattern the renderer side's own choiceList case uses)
   // since it's rendered here explicitly instead.
   const choiceListChild = asNodes(node.content).find((child) => child.type === "choiceList");
+  const forceOneColumn = kind === "multi" && node.attrs?.multiForceOneColumn !== false;
   const choicesMarkdown = choiceListChild
-    ? renderChoices(choiceItemEntries(choiceListChild), kind === "multi")
+    ? renderChoices(choiceItemEntries(choiceListChild), forceOneColumn)
     : "";
   return [heading, choicesMarkdown].filter(Boolean).join("\n\n");
 }

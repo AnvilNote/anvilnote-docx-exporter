@@ -38,11 +38,16 @@ function isEntryEmpty(entry: ChoiceEntry): boolean {
   return entry.kind === "text" && entry.text.trim() === "";
 }
 
-export function choiceColumns(entries: ChoiceEntry[]): 1 | 2 | 4 {
+// Column count is capped per tier against the TOTAL entry count
+// (entries.length), not the non-empty count — mirrors anvilnote-web's
+// src/lib/question-choices.ts exactly (see its own comment for the full
+// rationale: capping against nonEmpty.length collapsed a 5-choice
+// question to 1 column the instant only the first choice had real text).
+export function choiceColumns(entries: ChoiceEntry[]): number {
   const nonEmpty = entries.filter((e) => !isEntryEmpty(e));
-  if (nonEmpty.length === 0) return 4;
+  if (nonEmpty.length === 0) return Math.min(entries.length, 5) || 4;
   const avg = nonEmpty.reduce((sum, e) => sum + entryWidth(e), 0) / nonEmpty.length;
-  if (avg <= 14) return 4;
-  if (avg <= 28) return 2;
+  if (avg <= 14) return Math.min(entries.length, 5);
+  if (avg <= 28) return Math.min(entries.length, 2);
   return 1;
 }
