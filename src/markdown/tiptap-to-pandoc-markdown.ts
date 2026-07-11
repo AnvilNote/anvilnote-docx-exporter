@@ -158,6 +158,19 @@ function inlineToMarkdown(content: unknown): string {
         }
         return `(${value})`;
       }
+      if (type === "inlineBlank") {
+        // No attrs — a fixed-width blank, not a reference. Escaped
+        // underscores, same reasoning as the written-answer lines case
+        // below in this file: a bare run of 3+ underscores is Pandoc's
+        // own thematic-break syntax (collapses into an HorizontalRule),
+        // so each one is escaped (`\_`) to stay literal text instead. 6
+        // characters approximates the PDF path's fixed 3em width (see
+        // anvil-question.typ's inline-blank()) at a typical body font
+        // size — this is a Markdown/DOCX-side visual approximation, not
+        // a real matching measurement the way the Typst path's literal
+        // 3em unit is.
+        return "\\_".repeat(6);
+      }
       return "";
     })
     .join("");
