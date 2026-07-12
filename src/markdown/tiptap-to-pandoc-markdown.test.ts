@@ -251,3 +251,43 @@ test("renders a written/blank item as a small number of blank paragraphs proport
   const blankParagraphs = md.split("\n\n").filter((block) => block.trim() === "&nbsp;");
   assert.equal(blankParagraphs.length, 4);
 });
+
+test("falls back to Pandoc table markup instead of dropping rich cell content", () => {
+  const doc = {
+    type: "doc",
+    content: [
+      {
+        type: "table",
+        content: [
+          {
+            type: "tableRow",
+            content: [
+              {
+                type: "tableHeader",
+                content: [{ type: "paragraph", content: [{ type: "text", text: "Math" }] }],
+              },
+            ],
+          },
+          {
+            type: "tableRow",
+            content: [
+              {
+                type: "tableCell",
+                content: [
+                  {
+                    type: "paragraph",
+                    content: [{ type: "inlineMath", attrs: { latex: "x^2" } }],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  const markdown = tiptapToPandocMarkdown(doc);
+  assert.match(markdown, /\$x\^2\$/);
+  assert.doesNotMatch(markdown, /```\{=openxml\}/);
+});

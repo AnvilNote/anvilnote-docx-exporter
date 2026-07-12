@@ -2,6 +2,7 @@ import type { TiptapMark, TiptapNode } from "../types.js";
 import { formatCrossRefLabel } from "../config/cross-ref-labels.js";
 import { proofLabel } from "../config/proof-labels.js";
 import { choiceColumns, type ChoiceEntry } from "./question-choices.js";
+import { renderTableOoxml } from "./table-ooxml.js";
 
 // Converts a Tiptap `doc` node to Pandoc-flavored Markdown: GFM tables,
 // $…$ / $$…$$ math (Pandoc's native math extension), and — the one place
@@ -14,6 +15,10 @@ import { choiceColumns, type ChoiceEntry } from "./question-choices.js";
 
 function asNodes(content: unknown): TiptapNode[] {
   return Array.isArray(content) ? (content as TiptapNode[]) : [];
+}
+
+function escapeCell(text: string): string {
+  return text.replace(/\|/g, "\\|").replace(/\n+/g, " ");
 }
 
 // Question numbering: same "count in document order, reset per export
@@ -60,10 +65,6 @@ function textContent(content: unknown): string {
   return asNodes(content)
     .map((node) => (typeof node.text === "string" ? node.text : textContent(node.content)))
     .join("");
-}
-
-function escapeCell(text: string): string {
-  return text.replace(/\|/g, "\\|").replace(/\n+/g, " ");
 }
 
 // --- inline -----------------------------------------------------------
@@ -216,29 +217,52 @@ function renderTaskList(node: TiptapNode): string {
   return lines.join("\n");
 }
 
-function renderTable(node: TiptapNode): string {
+const OOXML_TABLE_NODE_TYPES = new Set([
+  "table",
+  "tableRow",
+  "tableCell",
+  "tableHeader",
+  "paragraph",
+  "text",
+  "hardBreak",
+  "bulletList",
+  "orderedList",
+  "listItem",
+]);
+const OOXML_TABLE_MARK_TYPES = new Set(["bold", "italic", "underline", "strike"]);
+
+function canRenderTableAsOoxml(node: TiptapNode): boolean {
+  if (typeof node.type !== "string" || !OOXML_TABLE_NODE_TYPES.has(node.type)) return false;
+  if (
+    Array.isArray(node.marks) &&
+    node.marks.some((mark) => typeof mark.type !== "string" || !OOXML_TABLE_MARK_TYPES.has(mark.type))
+  ) {
+    return false;
+  }
+  return asNodes(node.content).every(canRenderTableAsOoxml);
+}
+
+function renderTableMarkdown(node: TiptapNode): string {
   const rows = asNodes(node.content).filter((row) => row.type === "tableRow");
   if (rows.length === 0) return "";
 
   const firstCells = asNodes(rows[0].content);
-  const hasHeader = firstCells.length > 0 && firstCells.every((cell) => cell.type === "tableHeader");
+  const hasHeader =
+    firstCells.length > 0 && firstCells.every((cell) => cell.type === "tableHeader");
   const columns = firstCells.length || 1;
-
   const cellText = (cell: TiptapNode) =>
     escapeCell(renderBlocks(asNodes(cell.content)).replace(/\n+/g, " ").trim());
-
-  const headerCells = hasHeader ? firstCells.map(cellText) : Array.from({ length: columns }, () => "");
+  const headerCells = hasHeader
+    ? firstCells.map(cellText)
+    : Array.from({ length: columns }, () => "");
   const bodyRows = hasHeader ? rows.slice(1) : rows;
-
   const lines = [
     `| ${headerCells.join(" | ")} |`,
     `| ${headerCells.map(() => "---").join(" | ")} |`,
   ];
   for (const row of bodyRows) {
-    const cells = asNodes(row.content).map(cellText);
-    lines.push(`| ${cells.join(" | ")} |`);
+    lines.push(`| ${asNodes(row.content).map(cellText).join(" | ")} |`);
   }
-
   return lines.join("\n");
 }
 
@@ -605,7 +629,7 @@ function renderBlock(node: TiptapNode): string {
         .filter(Boolean)
         .join("\n\n");
     case "table":
-      return renderTable(node);
+      return canRenderTableAsOoxml(node) ? renderTableOoxml(node) : renderTableMarkdown(node);
     case "hardBreak":
       return "";
     case "footnotes":
