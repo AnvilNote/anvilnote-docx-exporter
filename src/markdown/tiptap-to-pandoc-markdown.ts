@@ -254,6 +254,31 @@ function escapeAttr(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
+// OOXML has no direct equivalent of Typst's `line()`/CSS's `<hr>` — the
+// standard Word technique is a paragraph-bottom-border on an otherwise
+// empty paragraph. Raw OOXML (same `{=openxml}` fenced-block technique as
+// the 1-column choice line further down this file — see that block's own
+// comment for why: a Div with a reference.docx `custom-style` silently
+// loses its formatting the moment `--lua-filter callout.lua` is in the
+// same pandoc invocation, which it always is here), not a fenced div +
+// Lua filter mapping, since thickness/style are continuous values with no
+// fixed paragraph-style equivalent the way callout kinds have.
+const OOXML_BORDER_VAL: Record<string, string> = {
+  solid: "single",
+  dashed: "dashed",
+  dotted: "dotted",
+  dashdot: "dotDash",
+};
+
+function renderDivider(node: TiptapNode): string {
+  const thickness = typeof node.attrs?.thicknessPt === "number" ? node.attrs.thicknessPt : 0.5;
+  const lineStyle = typeof node.attrs?.lineStyle === "string" ? node.attrs.lineStyle : "solid";
+  const val = OOXML_BORDER_VAL[lineStyle] ?? "single";
+  // w:sz is in eighths of a point; valid range is 2 (0.25pt) to 96 (12pt).
+  const sz = Math.min(96, Math.max(2, Math.round(thickness * 8)));
+  return `\`\`\`{=openxml}\n<w:p><w:pPr><w:pBdr><w:bottom w:val="${val}" w:sz="${sz}" w:space="1" w:color="auto"/></w:pBdr></w:pPr></w:p>\n\`\`\``;
+}
+
 function renderCallout(node: TiptapNode): string {
   const kind = typeof node.attrs?.kind === "string" ? node.attrs.kind : "note";
   const title = typeof node.attrs?.title === "string" ? node.attrs.title.trim() : "";
@@ -567,7 +592,7 @@ function renderBlock(node: TiptapNode): string {
       return latex.trim() ? `$$\n${latex}\n$$` : "";
     }
     case "horizontalRule":
-      return "---";
+      return renderDivider(node);
     case "image":
       return renderImage(node);
     case "imageRow":
