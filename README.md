@@ -1,77 +1,155 @@
-# anvilnote-docx-exporter
+# AnvilNote DOCX Exporter
 
-CLI service that converts an AnvilNote document (Tiptap JSON) to a Word
-`.docx` file. Sibling repo to `anvilnote-renderer` (which does the same job
-for Typst/PDF) — same shape, different engine, fully decoupled: this repo
-has no dependency on `anvilnote-web`, `anvilnote-api`, or `anvilnote-renderer`,
-and none of them depend on its internals either. `anvilnote-api` only shells
-out to its built CLI, exactly like it does for the Typst renderer.
+`anvilnote-docx-exporter` is the DOCX conversion CLI used by AnvilNote. It accepts the current AnvilNote Tiptap document JSON and produces a Word `.docx` file. `anvilnote-api` invokes the built CLI, and AnvilNote Desktop packages it with a pinned Pandoc executable.
+
+The exporter is deliberately separate from the Web editor, API, and PDF renderer. Its CLI contract lets those components request an export without depending on its conversion internals. It does not handle OpenAI API keys or call AI providers.
 
 ## How it works
 
-```
-Tiptap JSON (doc node)
-  -> tiptapToPandocMarkdown()      Pandoc-flavored Markdown; callouts become
-                                     fenced divs: ::: {.callout .note title="..."}
-  -> pandoc (system binary)         --lua-filter assets/callout.lua maps
-                                     fenced divs to Word paragraph styles
-                                     --reference-doc assets/reference.docx
-                                     supplies those styles + default fonts
-  -> .docx buffer
+```text
+Tiptap document JSON
+  -> Pandoc-flavored Markdown and targeted OOXML
+  -> callout Lua filter and reference DOCX
+  -> Pandoc
+  -> Word DOCX
 ```
 
-Tables and math ($…$ / $$…$$) are native Pandoc Markdown and need no filter —
-Pandoc converts math straight to Word's native equation objects (OMML).
-Callouts are AnvilNote's own concept, so they're the one thing routed through
-`assets/callout.lua` + `assets/reference.docx`.
+Pandoc converts inline and display math to native Word OMML equation objects. Callouts use `assets/callout.lua` and the paragraph styles in `assets/reference.docx`. The exporter emits targeted OOXML where the Markdown representation would lose table structure or layout details.
+
+## Supported document content
+
+The current converter includes:
+
+- Paragraphs, headings, lists, blockquotes, code blocks, and horizontal rules
+- Text marks and links from the accepted editor document
+- Native Word tables, including supported row and column spans
+- Inline and display math through OMML
+- Images and image rows
+- Callouts
+- Proof blocks with localized proof labels and QED
+- Single-choice, multiple-choice, and written-response questions
+- Footnotes and resolved cross-references
+
+The input is Tiptap JSON, not the provider-facing Smart Mode wire format. AI-generated content is exported only after it has passed validation and has been accepted into an AnvilNote document.
 
 ## Requirements
 
-- Node.js + pnpm
-- [Pandoc](https://pandoc.org/) on `PATH` (or set `PANDOC_BIN` to its path).
-  `brew install pandoc` on macOS.
+For standalone source development:
 
-## Usage
+- Node.js and pnpm
+- [Pandoc](https://pandoc.org/) on `PATH`, or a custom executable supplied through `PANDOC_BIN`
 
-```sh
+For example, on macOS:
+
+```bash
+brew install pandoc
+```
+
+Packaged AnvilNote Desktop releases include Pandoc. Desktop users do not need to install it separately.
+
+## Setup and usage
+
+```bash
 pnpm install
 pnpm build
 node dist/cli.js --input document.json --output out.docx
 ```
 
-`document.json`:
+`document.json` contains a title, an unwrapped Tiptap `doc` node, and an optional primary language:
 
 ```json
-{ "title": "My Note", "content": { "type": "doc", "content": [...] } }
+{
+  "title": "My Note",
+  "primaryLang": "en",
+  "content": {
+    "type": "doc",
+    "content": [
+      {
+        "type": "paragraph",
+        "content": [
+          {
+            "type": "text",
+            "text": "Hello from AnvilNote"
+          }
+        ]
+      }
+    ]
+  }
+}
 ```
 
-`content` is an AnvilDocument's `content` field — an unwrapped Tiptap `doc`
-node, the same shape the editor already produces.
+The CLI writes one JSON result to `stdout`.
 
-Output on stdout (mirrors `anvilnote-renderer`'s CLI contract, so
-`anvilnote-api` can shell out to both the same way):
+Success:
 
 ```json
-{"ok":true,"status":"COMPLETED","docxPath":"out.docx","logs":[...]}
-{"ok":false,"status":"FAILED","error":{"message":"...","details":"..."},"logs":[...]}
+{
+  "ok": true,
+  "status": "COMPLETED",
+  "docxPath": "out.docx",
+  "logs": []
+}
 ```
 
-## Regenerating assets/reference.docx
+Failure:
 
-The callout palette and default fonts are defined in
-`scripts/build-reference-docx.ts` (mirrors
-`anvilnote-web/src/config/callouts.ts`'s 12 kinds by hand — there's no shared
-import, so if the web palette changes, update both and re-run):
+```json
+{
+  "ok": false,
+  "status": "FAILED",
+  "error": {
+    "message": "Export failed",
+    "details": "..."
+  },
+  "logs": []
+}
+```
 
-```sh
+## Application integration
+
+In source development, `anvilnote-api` expects the Desktop-compatible bundle at `dist/cli.cjs`:
+
+```bash
+pnpm build:desktop
+```
+
+The API then exposes the document export through `POST /api/documents/:id/export/docx`. AnvilNote Desktop's preparation step builds and stages this exporter together with the API and other sibling components.
+
+## Reference document
+
+Callout colors and Word paragraph styles are defined by `scripts/build-reference-docx.ts`, `assets/callout.lua`, and the committed `assets/reference.docx`. If the shared callout palette changes, update the mirrored configuration and regenerate the reference file:
+
+```bash
 pnpm assets:build-reference
 ```
 
-The generated `assets/reference.docx` is committed as a binary asset; Pandoc
-reads it directly at export time, it isn't rebuilt on every run.
+The reference document is a committed build asset. It is not regenerated for each export.
 
-## Known limitation
+## Commands
 
-Apple Pages has poor support for Word's native OMML equation objects and may
-render math as blank — this is a Pages limitation, not a bug here. Verify
-math output in real Microsoft Word or LibreOffice.
+```bash
+pnpm build
+pnpm build:desktop
+pnpm lint
+pnpm test
+pnpm assets:build-reference
+```
+
+The `export` and `start` scripts require the `--input` and `--output` arguments
+shown under [Setup and usage](#setup-and-usage).
+
+## Known limitations
+
+- Apple Pages has incomplete support for Word OMML and may display native equations as blank. Verify equation output in Microsoft Word or LibreOffice.
+- Features that have no equivalent in DOCX may use a documented fallback rather than matching the editor pixel for pixel.
+
+## Related repositories
+
+- [AnvilNote API](https://github.com/AnvilNote/anvilnote-api) invokes the exporter CLI.
+- [AnvilNote Desktop](https://github.com/AnvilNote/anvilnote-desktop) packages the exporter and Pandoc.
+- [AnvilNote Web](https://github.com/AnvilNote/anvilnote-web) produces the Tiptap input document.
+- [AnvilNote Renderer](https://github.com/AnvilNote/anvilnote-renderer) handles the separate Typst/PDF path.
+
+## License
+
+This repository is licensed under the [MIT License](LICENSE).
