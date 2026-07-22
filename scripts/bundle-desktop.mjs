@@ -1,3 +1,5 @@
+/* global console */
+
 // Bundle the CLI into a single self-contained dist/cli.cjs so the desktop
 // app can run it under Electron's Node runtime with NO external
 // node_modules (mirrors anvilnote-renderer's scripts/bundle-desktop.mjs).

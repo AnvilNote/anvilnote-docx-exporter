@@ -37,7 +37,6 @@ const CALLOUT_KINDS: Record<string, { accent: string; bg: string }> = {
 
 const BODY_TEXT_COLOR = "1F2328";
 const ASCII_FONT = "Avenir Next";
-const EASTASIA_FONT = "PingFang TC";
 
 function calloutStyles() {
   return Object.entries(CALLOUT_KINDS).flatMap(([kind, { accent, bg }]) => [

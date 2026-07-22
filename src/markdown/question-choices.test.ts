@@ -50,9 +50,9 @@ test("choiceColumns defaults to 4 columns when every option is empty", () => {
 });
 
 test("choiceColumns counts an image entry as the flat nominal width", () => {
-  // A single image entry alone (nominal width 20) lands past the 14
-  // threshold, same tier a medium-length text choice would.
-  assert.equal(choiceColumns([{ kind: "image" }]), 2);
+  // A single image entry alone has nominal width 20. With only one slot,
+  // the medium tier is capped to one column, matching Web and Renderer.
+  assert.equal(choiceColumns([{ kind: "image" }]), 1);
 });
 
 test("choiceColumns counts a blockMath entry as the flat nominal width", () => {
