@@ -617,6 +617,16 @@ function renderBlock(node: TiptapNode): string {
     }
     case "horizontalRule":
       return renderDivider(node);
+    case "functionPlot": {
+      const preview = typeof node.attrs?.preview === "string" ? node.attrs.preview : "";
+      if (!preview) return "";
+      // Word/Markdown can't embed a raw PDF — reuses the cached rasterized
+      // PNG preview (the same one the editor's NodeView displays), not the
+      // vector `pdf` attr the Typst exporter uses. renderImage only ever
+      // reads node.attrs.src, so this just aliases preview into that field
+      // rather than duplicating its body.
+      return renderImage({ ...node, attrs: { ...node.attrs, src: preview } });
+    }
     case "image":
       return renderImage(node);
     case "imageRow":
