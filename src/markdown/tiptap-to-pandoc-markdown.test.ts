@@ -291,3 +291,23 @@ test("falls back to Pandoc table markup instead of dropping rich cell content", 
   assert.match(markdown, /\$x\^2\$/);
   assert.doesNotMatch(markdown, /```\{=openxml\}/);
 });
+
+test("functionPlot node embeds its cached PNG preview as a markdown image", () => {
+  const doc = {
+    type: "doc",
+    content: [
+      {
+        type: "functionPlot",
+        attrs: { preview: "data:image/png;base64,AAAA", pdf: "JVBERi0x" },
+      },
+    ],
+  };
+  const md = tiptapToPandocMarkdown(doc);
+  assert.match(md, /!\[\]\(data:image\/png;base64,AAAA\)/);
+});
+
+test("functionPlot node with no cached preview renders nothing", () => {
+  const doc = { type: "doc", content: [{ type: "functionPlot", attrs: {} }] };
+  const md = tiptapToPandocMarkdown(doc);
+  assert.equal(md.trim(), "");
+});
